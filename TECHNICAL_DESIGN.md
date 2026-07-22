@@ -6,9 +6,63 @@ doc covers how it's built. Updated as decisions are made.
 
 ## Status
 
-**Data model: settled. Stack & hosting: settled** (see below), no open
-questions. Next up: project scaffolding and API/page design — not yet
-started.
+**Data model: settled. Stack & hosting: settled. Scaffolding: done.
+Azure: provisioned** (2026-07-22, see § Provisioned Infrastructure).
+
+Where we got to (2026-07-22):
+- Solution scaffolded: ASP.NET Core Razor Pages (`src/Shelf.Web`,
+  net10.0), EF Core 10 entity model matching this doc, `InitialCreate`
+  migration generated **and applied to the Azure SQL database**.
+- Pushed to GitHub (`tomwazo/Shelf-app`), branch `develop`. `main` is
+  the deploy branch (GitHub Actions → App Service on push to `main`).
+- All Azure resources created and configured, including Easy Auth —
+  the site redirects to Microsoft sign-in and only accepts accounts
+  from the owner's directory.
+- **Not yet done:** first real deploy. `develop` has not been merged to
+  `main`, so the workflow on `main` has one expected-failed run (no app
+  code there yet). Merging `develop` → `main` triggers the first
+  deploy.
+
+### Actions for next session
+1. **Discuss how to run the project locally** (user-requested) — a
+   local test workflow so changes can be verified before pushing/
+   deploying. Topics: local DB options (LocalDB vs pointing at Azure
+   SQL), `dotnet run`/hot reload, and how Easy Auth is simulated when
+   running locally (no login wall on localhost — the user-identity
+   middleware needs a dev fallback).
+2. Merge `develop` → `main` for the first deploy (once happy).
+3. Then: page/route design and start building (Timeline, Shelf, item
+   detail, search/add flow) + external API keys (TMDB, IGDB).
+
+## Provisioned Infrastructure
+
+All in resource group `shelf-rg`, subscription "Azure subscription 1"
+(tenant `efb59d4c-9e6b-413c-8a20-a9d30be0abc5`). Running cost: £0/month.
+
+- **SQL server:** `shelf-sql-ccbp.database.windows.net` (UK South),
+  admin login `shelfadmin`. Password: stored in the App Service
+  `ShelfDb` connection string (portal → web app → Environment
+  variables) — copy to a password manager.
+  Firewall: Azure services allowed + home IP (will need updating if
+  the home IP changes).
+- **Database:** `Shelf` — serverless free tier (`useFreeLimit: true`),
+  10 GB / 100k vCore-seconds per month, **pauses** (not bills) on
+  exhaustion; auto-pauses after 60 idle minutes, so the first request
+  after idle is slow. Schema: `InitialCreate` applied 2026-07-22.
+- **App Service plan:** `shelf-plan`, F1 (free), Linux, **UK West**
+  (UK South had no free-tier VM quota).
+- **Web app:** `shelf-app-ccbp` →
+  https://shelf-app-ccbp.azurewebsites.net, runtime DOTNETCORE:10.0.
+  Connection string `ShelfDb` (type SQLAzure) set in app config.
+- **Deployment:** GitHub Actions workflow
+  `.github/workflows/main_shelf-app-ccbp.yml` on `main`, publish-
+  profile secret in repo. Deploys on push to `main`.
+- **Easy Auth:** enabled, all requests require sign-in. Entra app
+  registration "Shelf Easy Auth" (client id
+  `521b55e5-2962-4cbb-81b7-c3bb7d4582e9`), sign-in audience
+  AzureADMyOrg (owner's directory only — effectively locked to Tom).
+  **Client secret expires July 2028** — sign-in breaks then unless
+  rotated.
 
 ## Stack & Hosting
 
