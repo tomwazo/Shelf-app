@@ -6,46 +6,41 @@ doc covers how it's built. Updated as decisions are made.
 
 ## Status
 
-**Data model: settled. Stack & hosting: settled. Scaffolding: done.
-Azure: provisioned** (2026-07-22, see § Provisioned Infrastructure).
-**Local dev: working. First deploy: done** (2026-07-23, see § Local
-Development and § Provisioned Infrastructure → Deployment).
+**v1 is live and fully functional in production** (2026-07-24) —
+https://shelf-app-ccbp.azurewebsites.net, behind Easy Auth. All 9
+phases of [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) are
+implemented, tested (26 xUnit tests), merged to `main`, and deployed:
+identity, Shelf browse, search/add (TMDB/OpenLibrary/IGDB), the full
+item lifecycle (status, reviews, comments, recommendation notes,
+remove/re-add), Timeline, and Stats. Full prod smoke test passed
+2026-07-24: sign-in, real user attribution, adding from all three
+providers, and the complete item-detail flow all verified working live.
 
-Where we got to (2026-07-23):
-- Solution scaffolded: ASP.NET Core Razor Pages (`src/Shelf.Web`,
-  net10.0), EF Core 10 entity model matching this doc, `InitialCreate`
-  migration generated **and applied to the Azure SQL database**.
-- Pushed to GitHub (`tomwazo/Shelf-app`), branch `develop`. `main` is
-  the deploy branch (GitHub Actions → App Service on push to `main`).
-- All Azure resources created and configured, including Easy Auth —
-  the site redirects to Microsoft sign-in and only accepts accounts
-  from the owner's directory.
-- Local dev environment set up and verified: SQL LocalDB installed,
-  `InitialCreate` applied to a local `Shelf` database, app runs and
-  serves pages on `http://localhost:5186` (see § Local Development).
-- First deploy done and confirmed working (2026-07-23): `develop`
-  merged to `main` via PR #3, GitHub Actions deploy succeeded, site
-  live behind Easy Auth at https://shelf-app-ccbp.azurewebsites.net —
-  sign-in redirect and app homepage both verified in-browser. (The
-  first attempt failed with "publish profile is invalid" — fixed by
-  enabling SCM basic-auth publishing and refreshing the publish-profile
-  secret; see § Provisioned Infrastructure → Deployment.) Note: right
-  after a deploy, Azure's default "we don't have your content yet"
-  placeholder can briefly show before the app finishes cold-starting —
-  transient, not a failure; reload after a minute.
+Two bugs were found only in production during this deploy (both
+fixed, see git history on `develop`/`main`):
+- The deploy workflow's `dotnet build`/`dotnet publish` had no
+  `--project` argument; once Phase 0 added a second project
+  (`Shelf.Web.Tests`) to `Shelf.slnx`, this published both projects'
+  output into one folder, and Azure's Oryx build system — finding two
+  `.runtimeconfig.json` files — silently fell back to running its
+  default placeholder app instead of erroring. Fixed by pointing both
+  commands at `src/Shelf.Web/Shelf.Web.csproj` explicitly.
+- `CurrentUserService`'s first-login auto-create ("does this user
+  exist? no → insert") wasn't race-safe: two near-simultaneous requests
+  on the very first real page load (each with its own DbContext) both
+  found no row and both tried to insert, and the second hit
+  `IX_Users_ExternalIdentity`'s unique constraint. Fixed by catching
+  that specific failure and re-reading the row the other request
+  committed.
+
+Local dev, Azure provisioning, and first deploy were completed
+2026-07-22–23 (see § Local Development and § Provisioned
+Infrastructure → Deployment for that history).
 
 ### Actions for next session
-1. Implement v1 per [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
-   (phases 0–8: housekeeping/tests → identity/layout → search/add →
-   Shelf → item detail → review/comments/notes → Timeline → Stats →
-   deploy). Written 2026-07-24 for a coding agent to follow.
-2. External API keys: **obtained** (2026-07-24) — TMDB API key and
-   Twitch/IGDB client id + secret (Twitch app registered with
-   `http://localhost` redirect, Confidential client type; OpenLibrary
-   needs no key). Values held by Tom, not yet configured anywhere:
-   go in .NET user secrets locally and App Service app settings in
-   prod, under the config keys named in IMPLEMENTATION_PLAN.md
-   § Configuration & secrets.
+None currently — v1 is complete. Next likely work is a UI redesign
+from wireframes (visual-layer only; `ShelfService`/`StatsService`/
+search providers wouldn't need to change) — no wireframes provided yet.
 
 ## Provisioned Infrastructure
 
