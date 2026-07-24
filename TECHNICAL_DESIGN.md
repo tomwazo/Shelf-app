@@ -8,7 +8,8 @@ doc covers how it's built. Updated as decisions are made.
 
 **Data model: settled. Stack & hosting: settled. Scaffolding: done.
 Azure: provisioned** (2026-07-22, see § Provisioned Infrastructure).
-**Local dev: working** (2026-07-23, see § Local Development).
+**Local dev: working. First deploy: done** (2026-07-23, see § Local
+Development and § Provisioned Infrastructure → Deployment).
 
 Where we got to (2026-07-23):
 - Solution scaffolded: ASP.NET Core Razor Pages (`src/Shelf.Web`,
@@ -22,15 +23,29 @@ Where we got to (2026-07-23):
 - Local dev environment set up and verified: SQL LocalDB installed,
   `InitialCreate` applied to a local `Shelf` database, app runs and
   serves pages on `http://localhost:5186` (see § Local Development).
-- **Not yet done:** first real deploy. `develop` has not been merged to
-  `main`, so the workflow on `main` has one expected-failed run (no app
-  code there yet). Merging `develop` → `main` triggers the first
-  deploy.
+- First deploy done and confirmed working (2026-07-23): `develop`
+  merged to `main` via PR #3, GitHub Actions deploy succeeded, site
+  live behind Easy Auth at https://shelf-app-ccbp.azurewebsites.net —
+  sign-in redirect and app homepage both verified in-browser. (The
+  first attempt failed with "publish profile is invalid" — fixed by
+  enabling SCM basic-auth publishing and refreshing the publish-profile
+  secret; see § Provisioned Infrastructure → Deployment.) Note: right
+  after a deploy, Azure's default "we don't have your content yet"
+  placeholder can briefly show before the app finishes cold-starting —
+  transient, not a failure; reload after a minute.
 
 ### Actions for next session
-1. Merge `develop` → `main` for the first deploy (once happy).
-2. Then: page/route design and start building (Timeline, Shelf, item
-   detail, search/add flow) + external API keys (TMDB, IGDB).
+1. Implement v1 per [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
+   (phases 0–8: housekeeping/tests → identity/layout → search/add →
+   Shelf → item detail → review/comments/notes → Timeline → Stats →
+   deploy). Written 2026-07-24 for a coding agent to follow.
+2. External API keys: **obtained** (2026-07-24) — TMDB API key and
+   Twitch/IGDB client id + secret (Twitch app registered with
+   `http://localhost` redirect, Confidential client type; OpenLibrary
+   needs no key). Values held by Tom, not yet configured anywhere:
+   go in .NET user secrets locally and App Service app settings in
+   prod, under the config keys named in IMPLEMENTATION_PLAN.md
+   § Configuration & secrets.
 
 ## Provisioned Infrastructure
 
@@ -54,7 +69,19 @@ All in resource group `shelf-rg`, subscription "Azure subscription 1"
   Connection string `ShelfDb` (type SQLAzure) set in app config.
 - **Deployment:** GitHub Actions workflow
   `.github/workflows/main_shelf-app-ccbp.yml` on `main`, publish-
-  profile secret in repo. Deploys on push to `main`.
+  profile secret in repo. Deploys on push to `main`. First deploy
+  succeeded 2026-07-23.
+  - **SCM basic-auth publishing: enabled** (2026-07-23). Azure
+    disables it by default on new apps, which made the publish
+    profile invalid and failed the first deploy attempt. Enabled it
+    and stored a freshly issued publish profile in the repo secret
+    (`AzureAppService_PublishProfile_662…`). Deliberate trade-off:
+    keeping App Service's generated publish-profile workflow over
+    migrating to OIDC federated credentials — simpler, and fine for
+    a single-owner hobby app. If publishing credentials are ever
+    reset, refresh the secret the same way
+    (`az webapp deployment list-publishing-profiles --xml` →
+    `gh secret set`).
 - **Easy Auth:** enabled, all requests require sign-in. Entra app
   registration "Shelf Easy Auth" (client id
   `521b55e5-2962-4cbb-81b7-c3bb7d4582e9`), sign-in audience

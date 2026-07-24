@@ -2,4 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Shelf.Web/Shelf.Web.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Shelf.Web.Tests/Shelf.Web.Tests.csproj" />
+  </Folder>
 </Solution>

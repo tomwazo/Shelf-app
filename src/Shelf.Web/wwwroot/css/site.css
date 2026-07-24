@@ -29,3 +29,39 @@ body {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
   text-align: start;
 }
+
+.cover-placeholder {
+  aspect-ratio: 2 / 3;
+  background-color: var(--bs-secondary-bg);
+  color: var(--bs-secondary-color);
+  font-size: 2.5rem;
+  font-weight: 600;
+}
+
+/* Pure-CSS star rating input: radios rendered 5..1 in the DOM, displayed
+   1..5 via row-reverse, so the ~ sibling selector can light up a star and
+   everything after it in DOM order (i.e. everything to its left visually). */
+.star-rating {
+  display: inline-flex;
+  flex-direction: row-reverse;
+  gap: 0.15rem;
+}
+
+.star-rating input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.star-rating label {
+  cursor: pointer;
+  font-size: 1.75rem;
+  line-height: 1;
+  color: var(--bs-secondary-bg);
+}
+
+.star-rating input:checked ~ label,
+.star-rating label:hover,
+.star-rating label:hover ~ label {
+  color: #f5b301;
+}

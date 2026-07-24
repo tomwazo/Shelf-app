@@ -1,0 +1,232 @@
+@page "/items/{id:int}"
+@model Shelf.Web.Pages.Items.DetailsModel
+@using Shelf.Web.Data.Entities
+@using Shelf.Web.Services
+@{
+    ViewData["Title"] = Model.Item.Title;
+    var isRemoved = Model.Item.RemovedAt is not null;
+    var review = Model.Item.Review;
+}
+
+@if (isRemoved)
+{
+    <div class="alert alert-secondary">
+        This item was removed from your Shelf on @Model.Item.RemovedAt!.Value.ToLocalTime().ToString("d").
+        Re-add it from the <a asp-page="/Add">Add page</a>.
+    </div>
+}
+
+<div class="d-flex gap-3 mb-3">
+    @if (!string.IsNullOrEmpty(Model.Item.CoverArtUrl))
+    {
+        <img src="@Model.Item.CoverArtUrl" alt="" style="width:150px;height:225px;object-fit:cover;flex-shrink:0;" />
+    }
+    else
+    {
+        <div class="cover-placeholder d-flex align-items-center justify-content-center flex-shrink-0" style="width:150px;height:225px;">
+            <span>@Model.Item.Title.Substring(0, 1).ToUpperInvariant()</span>
+        </div>
+    }
+    <div>
+        <h1>@Model.Item.Title</h1>
+        <p>
+            <span class="badge text-bg-secondary">@Display.MediaTypeDisplay(Model.Item.MediaType)</span>
+            <span class="badge text-bg-primary">@Display.StatusDisplay(Model.Item.Status)</span>
+        </p>
+        @if (Model.Item.Genres.Count > 0)
+        {
+            <p>
+                @foreach (var genre in Model.Item.Genres)
+                {
+                    <span class="badge text-bg-light border me-1">@genre.Name</span>
+                }
+            </p>
+        }
+        <p class="text-muted">Added @Model.Item.AddedAt.ToLocalTime().ToString("d")</p>
+    </div>
+</div>
+
+@if (!isRemoved)
+{
+    <form method="post" asp-page-handler="ChangeStatus" class="d-flex gap-2 mb-4 align-items-end" style="max-width: 20rem;">
+        <input type="hidden" name="id" value="@Model.Item.Id" />
+        <div class="flex-grow-1">
+            <label class="form-label" for="status-select">Status</label>
+            <select class="form-select" id="status-select" name="status">
+                @foreach (var status in Enum.GetValues<ItemStatus>())
+                {
+                    <option value="@status" selected="@(Model.Item.Status == status ? "selected" : null)">@Display.StatusDisplay(status)</option>
+                }
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Update</button>
+    </form>
+}
+
+<h2>Recommendation</h2>
+@if (Model.RecError == "1")
+{
+    <p class="text-danger">Recommendation note can't be empty.</p>
+}
+@if (string.IsNullOrEmpty(Model.Item.RecommendationNote))
+{
+    if (!isRemoved)
+    {
+        <form method="post" asp-page-handler="SaveRecommendation" class="d-flex gap-2 mb-4" style="max-width: 30rem;">
+            <input type="hidden" name="id" value="@Model.Item.Id" />
+            <input type="text" class="form-control" name="note" placeholder="Recommended by..." />
+            <button type="submit" class="btn btn-outline-primary text-nowrap">Add note</button>
+        </form>
+    }
+}
+else if (Model.EditRec == "1" && !isRemoved)
+{
+    <form method="post" asp-page-handler="SaveRecommendation" class="d-flex gap-2 mb-4" style="max-width: 30rem;">
+        <input type="hidden" name="id" value="@Model.Item.Id" />
+        <input type="text" class="form-control" name="note" value="@Model.Item.RecommendationNote" />
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a asp-page="/Items/Details" asp-route-id="@Model.Item.Id" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+}
+else
+{
+    <p class="mb-4">
+        @Model.Item.RecommendationNote
+        @if (!isRemoved)
+        {
+            <a asp-page="/Items/Details" asp-route-id="@Model.Item.Id" asp-route-editRec="1" class="btn btn-sm btn-outline-secondary ms-2">Edit</a>
+            <form method="post" asp-page-handler="RemoveRecommendation" class="d-inline">
+                <input type="hidden" name="id" value="@Model.Item.Id" />
+                <button type="submit" class="btn btn-sm btn-outline-danger ms-1">Remove</button>
+            </form>
+        }
+    </p>
+}
+
+<h2>Review</h2>
+@if (Model.ReviewError == "1")
+{
+    <p class="text-danger">A review needs a rating, text, or both.</p>
+}
+@if (review is null)
+{
+    if (!isRemoved)
+    {
+        <form method="post" asp-page-handler="SaveReview" class="mb-4">
+            <input type="hidden" name="id" value="@Model.Item.Id" />
+            <div class="star-rating mb-2">
+                @for (var i = 5; i >= 1; i--)
+                {
+                    <input type="radio" id="star-@i" name="rating" value="@i" />
+                    <label for="star-@i" title="@i stars">★</label>
+                }
+            </div>
+            <div class="mb-2">
+                <textarea class="form-control" name="text" rows="3" placeholder="Your thoughts..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Save review</button>
+        </form>
+    }
+}
+else if (Model.EditReview == "1" && !isRemoved)
+{
+    <form method="post" asp-page-handler="SaveReview" class="mb-4">
+        <input type="hidden" name="id" value="@Model.Item.Id" />
+        <div class="star-rating mb-2">
+            @for (var i = 5; i >= 1; i--)
+            {
+                <input type="radio" id="star-@i" name="rating" value="@i" checked="@(review.Rating == i ? "checked" : null)" />
+                <label for="star-@i" title="@i stars">★</label>
+            }
+        </div>
+        <div class="mb-2">
+            <textarea class="form-control" name="text" rows="3">@review.Text</textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Save review</button>
+        <a asp-page="/Items/Details" asp-route-id="@Model.Item.Id" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+}
+else
+{
+    <div class="mb-4">
+        @if (review.Rating is int rating)
+        {
+            <div>@(new string('★', rating))@(new string('☆', 5 - rating))</div>
+        }
+        @if (!string.IsNullOrEmpty(review.Text))
+        {
+            <p>@review.Text</p>
+        }
+        <p class="text-muted small">
+            Reviewed @review.CreatedAt.ToLocalTime().ToString("d")
+            @if (review.UpdatedAt != review.CreatedAt)
+            {
+                <text>(edited @review.UpdatedAt.ToLocalTime().ToString("d"))</text>
+            }
+        </p>
+        @if (!isRemoved)
+        {
+            <a asp-page="/Items/Details" asp-route-id="@Model.Item.Id" asp-route-editReview="1" class="btn btn-sm btn-outline-secondary">Edit</a>
+            <form method="post" asp-page-handler="DeleteReview" class="d-inline">
+                <input type="hidden" name="id" value="@Model.Item.Id" />
+                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+            </form>
+        }
+    </div>
+}
+
+<h2>Comments</h2>
+@foreach (var comment in Model.Comments)
+{
+    if (Model.EditComment == comment.Id && !isRemoved)
+    {
+        <form method="post" asp-page-handler="EditComment" class="mb-3">
+            <input type="hidden" name="id" value="@Model.Item.Id" />
+            <input type="hidden" name="commentId" value="@comment.Id" />
+            <textarea class="form-control mb-1" name="text" rows="2">@comment.Text</textarea>
+            <button type="submit" class="btn btn-sm btn-primary">Save</button>
+            <a asp-page="/Items/Details" asp-route-id="@Model.Item.Id" class="btn btn-sm btn-outline-secondary">Cancel</a>
+        </form>
+    }
+    else
+    {
+        <div class="mb-3 pb-2 border-bottom">
+            <p class="mb-1">@comment.Text</p>
+            <p class="text-muted small mb-1">
+                @comment.CreatedAt.ToLocalTime().ToString("g")
+                @if (comment.UpdatedAt != comment.CreatedAt)
+                {
+                    <text>(edited @comment.UpdatedAt.ToLocalTime().ToString("g"))</text>
+                }
+            </p>
+            @if (!isRemoved)
+            {
+                <a asp-page="/Items/Details" asp-route-id="@Model.Item.Id" asp-route-editComment="@comment.Id" class="btn btn-sm btn-outline-secondary">Edit</a>
+                <form method="post" asp-page-handler="DeleteComment" class="d-inline">
+                    <input type="hidden" name="id" value="@Model.Item.Id" />
+                    <input type="hidden" name="commentId" value="@comment.Id" />
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                </form>
+            }
+        </div>
+    }
+}
+@if (!isRemoved)
+{
+    <form method="post" asp-page-handler="AddComment" class="mb-4">
+        <input type="hidden" name="id" value="@Model.Item.Id" />
+        <textarea class="form-control mb-1" name="text" rows="2" placeholder="Add a comment..."></textarea>
+        <button type="submit" class="btn btn-outline-primary">Add comment</button>
+    </form>
+}
+
+@if (!isRemoved)
+{
+    <form method="post" asp-page-handler="Remove" onsubmit="return confirm('Remove this item from your Shelf?');" class="mb-4">
+        <input type="hidden" name="id" value="@Model.Item.Id" />
+        <button type="submit" class="btn btn-outline-danger">Remove from Shelf</button>
+    </form>
+}
+
+<h2>Timeline</h2>
+<partial name="_EventList" model="(Model.Timeline, false)" />
