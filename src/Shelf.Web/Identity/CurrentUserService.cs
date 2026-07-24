@@ -55,7 +55,20 @@ public class CurrentUserService(
         {
             user = new User { ExternalIdentity = externalIdentity, Name = name };
             db.Users.Add(user);
-            await db.SaveChangesAsync(ct);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                // Lost a race with another request creating the same row first
+                // (e.g. two near-simultaneous requests on a user's very first
+                // visit, each with its own DbContext). Drop our failed insert
+                // and read back the row the other request committed instead
+                // of failing the request entirely.
+                db.Entry(user).State = EntityState.Detached;
+                user = await db.Users.SingleAsync(u => u.ExternalIdentity == externalIdentity, ct);
+            }
         }
 
         _cachedUser = user;
