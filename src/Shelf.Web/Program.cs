@@ -10,7 +10,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorPages();
 builder.Services.AddDbContext<ShelfDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("ShelfDb")));
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("ShelfDb"),
+        sqlOptions => sqlOptions.EnableRetryOnFailure()));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<ShelfService>();
