@@ -1,12 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace Shelf.Web.Pages;
 
-public class PrivacyModel : PageModel
+public class TimelineModel : PageModel
 {
     public void OnGet()
     {
     }
 }
-

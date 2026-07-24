@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Shelf.Web.Data;
+using Shelf.Web.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -7,6 +8,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddDbContext<ShelfDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("ShelfDb")));
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
 var app = builder.Build();
 
