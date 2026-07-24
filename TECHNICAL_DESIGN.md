@@ -35,8 +35,17 @@ Where we got to (2026-07-23):
   transient, not a failure; reload after a minute.
 
 ### Actions for next session
-1. Page/route design, then start building (Timeline, Shelf, item
-   detail, search/add flow) + external API keys (TMDB, IGDB).
+1. Implement v1 per [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
+   (phases 0–8: housekeeping/tests → identity/layout → search/add →
+   Shelf → item detail → review/comments/notes → Timeline → Stats →
+   deploy). Written 2026-07-24 for a coding agent to follow.
+2. External API keys: **obtained** (2026-07-24) — TMDB API key and
+   Twitch/IGDB client id + secret (Twitch app registered with
+   `http://localhost` redirect, Confidential client type; OpenLibrary
+   needs no key). Values held by Tom, not yet configured anywhere:
+   go in .NET user secrets locally and App Service app settings in
+   prod, under the config keys named in IMPLEMENTATION_PLAN.md
+   § Configuration & secrets.
 
 ## Provisioned Infrastructure
 
