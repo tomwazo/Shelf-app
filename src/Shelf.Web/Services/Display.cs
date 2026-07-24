@@ -24,6 +24,16 @@ public static class Display
         _ => mediaType.ToString(),
     };
 
+    public static string MediaTypeSingular(MediaType mediaType) => mediaType switch
+    {
+        MediaType.Tv => "TV show",
+        MediaType.Film => "film",
+        MediaType.Documentary => "documentary",
+        MediaType.Book => "book",
+        MediaType.Game => "game",
+        _ => mediaType.ToString(),
+    };
+
     public static string StatusDisplay(ItemStatus status) => status switch
     {
         ItemStatus.Backlog => "Backlog",

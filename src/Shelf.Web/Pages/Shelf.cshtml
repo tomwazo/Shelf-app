@@ -1,9 +1,97 @@
 @page "/shelf"
 @model Shelf.Web.Pages.ShelfModel
+@using Shelf.Web.Data.Entities
+@using Shelf.Web.Services
 @{
     ViewData["Title"] = "Shelf";
 }
 
 <h1>Shelf</h1>
 
-<p>No items to display.</p>
+<form method="get" class="row row-cols-auto g-2 align-items-end mb-3">
+    <div class="col">
+        <label class="form-label" for="Type">Type</label>
+        <select class="form-select" id="Type" name="Type" onchange="this.form.submit()">
+            <option value="">All types</option>
+            @foreach (var type in Enum.GetValues<MediaType>())
+            {
+                <option value="@type" selected="@(Model.Type == type ? "selected" : null)">@Display.MediaTypeDisplay(type)</option>
+            }
+        </select>
+    </div>
+    <div class="col">
+        <label class="form-label" for="GenreId">Genre</label>
+        <select class="form-select" id="GenreId" name="GenreId" onchange="this.form.submit()">
+            <option value="">All genres</option>
+            @foreach (var genre in Model.AvailableGenres)
+            {
+                <option value="@genre.Id" selected="@(Model.GenreId == genre.Id ? "selected" : null)">@genre.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col">
+        <label class="form-label" for="Status">Status</label>
+        <select class="form-select" id="Status" name="Status" onchange="this.form.submit()">
+            <option value="">All statuses</option>
+            @foreach (var status in Enum.GetValues<ItemStatus>())
+            {
+                <option value="@status" selected="@(Model.Status == status ? "selected" : null)">@Display.StatusDisplay(status)</option>
+            }
+        </select>
+    </div>
+    <div class="col">
+        <label class="form-label" for="Consumed">Consumed</label>
+        <select class="form-select" id="Consumed" name="Consumed" onchange="this.form.submit()">
+            <option value="">Any</option>
+            <option value="yes" selected="@(Model.Consumed == "yes" ? "selected" : null)">Consumed</option>
+            <option value="no" selected="@(Model.Consumed == "no" ? "selected" : null)">Not consumed</option>
+        </select>
+    </div>
+    <div class="col">
+        <label class="form-label" for="Sort">Sort</label>
+        <select class="form-select" id="Sort" name="Sort" onchange="this.form.submit()">
+            <option value="added" selected="@(Model.Sort == "added" ? "selected" : null)">Date added</option>
+            <option value="az" selected="@(Model.Sort == "az" ? "selected" : null)">A-Z</option>
+            <option value="za" selected="@(Model.Sort == "za" ? "selected" : null)">Z-A</option>
+        </select>
+    </div>
+    <div class="col">
+        <button type="submit" class="btn btn-outline-secondary">Apply</button>
+    </div>
+</form>
+
+<p class="text-muted">@Model.CountText</p>
+
+@if (Model.Items.Count == 0)
+{
+    <p>No items to display.</p>
+}
+else
+{
+    <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-5 g-3">
+        @foreach (var item in Model.Items)
+        {
+            <div class="col">
+                <a asp-page="/Items/Details" asp-route-id="@item.Id" class="text-decoration-none text-body">
+                    <div class="card h-100">
+                        @if (!string.IsNullOrEmpty(item.CoverArtUrl))
+                        {
+                            <img src="@item.CoverArtUrl" class="card-img-top" alt="" />
+                        }
+                        else
+                        {
+                            <div class="cover-placeholder card-img-top d-flex align-items-center justify-content-center">
+                                <span>@item.Title.Substring(0, 1).ToUpperInvariant()</span>
+                            </div>
+                        }
+                        <div class="card-body">
+                            <h6 class="card-title mb-1">@item.Title</h6>
+                            <span class="badge text-bg-secondary">@Display.MediaTypeDisplay(item.MediaType)</span>
+                            <span class="badge text-bg-primary">@Display.StatusDisplay(item.Status)</span>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        }
+    </div>
+}
