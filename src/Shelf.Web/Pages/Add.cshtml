@@ -10,6 +10,11 @@
 
 <form method="get" class="mb-4">
     <div class="btn-group mb-3" role="group" aria-label="Media type">
+        @{
+            var isAllSelected = Model.MediaType is null;
+        }
+        <input type="radio" class="btn-check" name="MediaType" id="mt-all" value="" autocomplete="off" checked="@(isAllSelected ? "checked" : null)" />
+        <label class="btn btn-outline-primary" for="mt-all">All types</label>
         @foreach (var type in Enum.GetValues<MediaType>())
         {
             var isSelected = Model.MediaType == type;
@@ -29,7 +34,39 @@
 }
 else if (Model.HasSearched)
 {
-    if (Model.Results.Count == 0)
+    if (Model.MediaType is null)
+    {
+        if (Model.Sections.Count == 0)
+        {
+            <p>No results found for '@Model.Q'.</p>
+        }
+        else
+        {
+            foreach (var typeSection in Model.Sections)
+            {
+                if (typeSection.Failed)
+                {
+                    <h2 class="h5 mt-4">@Display.MediaTypeDisplay(typeSection.Type)</h2>
+                    <p class="text-muted">@Display.MediaTypeDisplay(typeSection.Type) results are unavailable right now.</p>
+                }
+                else
+                {
+                    <h2 class="h5 mt-4">@Display.MediaTypeDisplay(typeSection.Type) (@typeSection.TotalCount)</h2>
+                    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
+                        @foreach (var row in typeSection.Rows)
+                        {
+                            <partial name="_SearchResultCard" model="(row, typeSection.Type)" />
+                        }
+                    </div>
+                    if (typeSection.ShowMoreUrl is not null)
+                    {
+                        <a href="@typeSection.ShowMoreUrl" class="d-inline-block mt-2">Show more @Display.MediaTypeDisplay(typeSection.Type).ToLowerInvariant() results</a>
+                    }
+                }
+            }
+        }
+    }
+    else if (Model.Results.Count == 0)
     {
         <p>No results found for '@Model.Q'.</p>
     }
@@ -38,58 +75,7 @@ else if (Model.HasSearched)
         <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
             @foreach (var row in Model.Results)
             {
-                var result = row.Result;
-                <div class="col">
-                    <div class="card h-100 @(row.ExistingItemId is not null ? "opacity-50" : "")">
-                        @if (!string.IsNullOrEmpty(result.CoverArtUrl))
-                        {
-                            <img src="@result.CoverArtUrl" class="card-img-top" alt="" />
-                        }
-                        else
-                        {
-                            <div class="cover-placeholder card-img-top d-flex align-items-center justify-content-center">
-                                <span>@result.Title.Substring(0, 1).ToUpperInvariant()</span>
-                            </div>
-                        }
-                        <div class="card-body d-flex flex-column">
-                            <h5 class="card-title">@result.Title</h5>
-                            @if (!string.IsNullOrEmpty(result.Year))
-                            {
-                                <p class="card-text text-muted mb-1">@result.Year</p>
-                            }
-                            @if (result.Genres.Count > 0)
-                            {
-                                <p class="card-text">
-                                    @foreach (var genre in result.Genres)
-                                    {
-                                        <span class="badge text-bg-light border me-1">@genre</span>
-                                    }
-                                </p>
-                            }
-                            <div class="mt-auto">
-                                @if (row.ExistingItemId is int existingId)
-                                {
-                                    <a asp-page="/Items/Details" asp-route-id="@existingId" class="btn btn-outline-secondary w-100">Already on your Shelf</a>
-                                }
-                                else
-                                {
-                                    <form method="post" asp-page-handler="Add">
-                                        <input type="hidden" name="Input.MediaType" value="@Model.MediaType" />
-                                        <input type="hidden" name="Input.Source" value="@result.Source" />
-                                        <input type="hidden" name="Input.ExternalId" value="@result.ExternalId" />
-                                        <input type="hidden" name="Input.Title" value="@result.Title" />
-                                        <input type="hidden" name="Input.CoverArtUrl" value="@result.CoverArtUrl" />
-                                        @foreach (var genre in result.Genres)
-                                        {
-                                            <input type="hidden" name="Input.Genres" value="@genre" />
-                                        }
-                                        <button type="submit" class="btn btn-primary w-100">Add</button>
-                                    </form>
-                                }
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <partial name="_SearchResultCard" model="(row, Model.MediaType.Value)" />
             }
         </div>
     }

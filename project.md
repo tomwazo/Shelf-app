@@ -78,6 +78,13 @@ Web app, accessed via browser (desktop and phone).
   - Films/TV — TMDB
   - Books — OpenLibrary
   - Games — IGDB
+- Search defaults to **all media types at once** — no need to pick a type
+  first. Results are grouped by media type, showing the top 5 matches per
+  type with a "show more" option to see the rest for that type. Picking a
+  specific media type up front still works and searches that type alone.
+- If one provider's search fails, the other types' results are still
+  shown, with a small note that the failed type is unavailable — one
+  broken external API doesn't blank the whole page.
 - Selecting a search result auto-fills title, cover art, and genre.
 - Available from both the Shelf page and the Timeline.
 

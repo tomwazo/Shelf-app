@@ -10,11 +10,19 @@ public class OpenLibrarySearchProvider(HttpClient http) : IMediaSearchProvider
 
     public bool Supports(MediaType mediaType) => mediaType == MediaType.Book;
 
+    public IReadOnlyList<MediaType> SupportedTypes => [MediaType.Book];
+
     public async Task<IReadOnlyList<MediaSearchResult>> SearchAsync(MediaType mediaType, string query, CancellationToken ct = default)
     {
         var url = $"search.json?q={Uri.EscapeDataString(query)}&limit=20&fields=key,title,first_publish_year,cover_i,subject";
         var response = await http.GetFromJsonAsync<OpenLibrarySearchResponse>(url, ct);
         return (response?.Docs ?? []).Select(Map).ToList();
+    }
+
+    public async Task<IReadOnlyDictionary<MediaType, IReadOnlyList<MediaSearchResult>>> SearchAllAsync(string query, CancellationToken ct = default)
+    {
+        var results = await SearchAsync(MediaType.Book, query, ct);
+        return new Dictionary<MediaType, IReadOnlyList<MediaSearchResult>> { [MediaType.Book] = results };
     }
 
     private static MediaSearchResult Map(OpenLibraryDoc doc)

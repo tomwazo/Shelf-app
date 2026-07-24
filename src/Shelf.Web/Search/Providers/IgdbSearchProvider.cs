@@ -10,6 +10,14 @@ public class IgdbSearchProvider(HttpClient http, IgdbTokenProvider tokenProvider
 {
     public bool Supports(MediaType mediaType) => mediaType == MediaType.Game;
 
+    public IReadOnlyList<MediaType> SupportedTypes => [MediaType.Game];
+
+    public async Task<IReadOnlyDictionary<MediaType, IReadOnlyList<MediaSearchResult>>> SearchAllAsync(string query, CancellationToken ct = default)
+    {
+        var results = await SearchAsync(MediaType.Game, query, ct);
+        return new Dictionary<MediaType, IReadOnlyList<MediaSearchResult>> { [MediaType.Game] = results };
+    }
+
     public async Task<IReadOnlyList<MediaSearchResult>> SearchAsync(MediaType mediaType, string query, CancellationToken ct = default)
     {
         var clientId = configuration["Igdb:ClientId"]
