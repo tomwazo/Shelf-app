@@ -1,0 +1,26 @@
+@page "/items/{id:int}"
+@model Shelf.Web.Pages.Items.DetailsModel
+@using Shelf.Web.Services
+@{
+    ViewData["Title"] = Model.Item.Title;
+}
+
+<h1>@Model.Item.Title</h1>
+<p>
+    <span class="badge text-bg-secondary">@Display.MediaTypeDisplay(Model.Item.MediaType)</span>
+    <span class="badge text-bg-primary">@Display.StatusDisplay(Model.Item.Status)</span>
+</p>
+
+@if (Model.Item.Genres.Count > 0)
+{
+    <p>
+        @foreach (var genre in Model.Item.Genres)
+        {
+            <span class="badge text-bg-light border me-1">@genre.Name</span>
+        }
+    </p>
+}
+
+<p class="text-muted">Added @Model.Item.AddedAt.ToLocalTime().ToString("d")</p>
+
+<p><em>Full item detail (status changes, reviews, comments, timeline) lands in a later phase.</em></p>
