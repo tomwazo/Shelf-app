@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Shelf.Web.Data;
 using Shelf.Web.Data.Entities;
@@ -90,6 +91,192 @@ public class ShelfService(ShelfDbContext db, ICurrentUserService currentUser)
         item.RemovedAt = DateTimeOffset.UtcNow;
 
         db.Events.Add(NewEvent(item, user.Id, EventType.ItemRemoved));
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task SaveReviewAsync(int itemId, int? rating, string? text, CancellationToken ct = default)
+    {
+        if (rating is < 1 or > 5)
+        {
+            throw new ArgumentException("Rating must be between 1 and 5.", nameof(rating));
+        }
+
+        var trimmedText = string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+        if (rating is null && trimmedText is null)
+        {
+            throw new ArgumentException("A review needs a rating, text, or both.");
+        }
+
+        var item = await db.Items.SingleOrDefaultAsync(i => i.Id == itemId, ct)
+            ?? throw new InvalidOperationException($"Item {itemId} not found.");
+        EnsureNotRemoved(item);
+
+        var user = await currentUser.GetCurrentUserAsync(ct);
+        var review = await db.Reviews.SingleOrDefaultAsync(r => r.ItemId == itemId, ct);
+
+        EventType eventType;
+        if (review is null)
+        {
+            var now = DateTimeOffset.UtcNow;
+            review = new Review
+            {
+                ItemId = itemId,
+                UserId = user.Id,
+                Rating = rating,
+                Text = trimmedText,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            db.Reviews.Add(review);
+            eventType = EventType.ReviewAdded;
+        }
+        else
+        {
+            review.Rating = rating;
+            review.Text = trimmedText;
+            review.UpdatedAt = DateTimeOffset.UtcNow;
+            eventType = EventType.ReviewEdited;
+        }
+
+        var payload = JsonSerializer.Serialize(new ReviewPayload(rating, trimmedText), EventJson.Options);
+        db.Events.Add(NewEvent(item, user.Id, eventType, payload: payload));
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task DeleteReviewAsync(int itemId, CancellationToken ct = default)
+    {
+        var item = await db.Items.SingleOrDefaultAsync(i => i.Id == itemId, ct)
+            ?? throw new InvalidOperationException($"Item {itemId} not found.");
+        EnsureNotRemoved(item);
+
+        var review = await db.Reviews.SingleOrDefaultAsync(r => r.ItemId == itemId, ct);
+        if (review is null)
+        {
+            return;
+        }
+
+        var user = await currentUser.GetCurrentUserAsync(ct);
+        var payload = JsonSerializer.Serialize(new ReviewPayload(review.Rating, review.Text), EventJson.Options);
+
+        db.Reviews.Remove(review);
+        db.Events.Add(NewEvent(item, user.Id, EventType.ReviewDeleted, payload: payload));
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task<Comment> AddCommentAsync(int itemId, string text, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            throw new ArgumentException("Comment text is required.", nameof(text));
+        }
+
+        var item = await db.Items.SingleOrDefaultAsync(i => i.Id == itemId, ct)
+            ?? throw new InvalidOperationException($"Item {itemId} not found.");
+        EnsureNotRemoved(item);
+
+        var user = await currentUser.GetCurrentUserAsync(ct);
+        var trimmedText = text.Trim();
+        var now = DateTimeOffset.UtcNow;
+
+        var comment = new Comment
+        {
+            ItemId = itemId,
+            UserId = user.Id,
+            Text = trimmedText,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.Comments.Add(comment);
+
+        var payload = JsonSerializer.Serialize(new CommentPayload(trimmedText), EventJson.Options);
+        db.Events.Add(NewEvent(item, user.Id, EventType.CommentAdded, payload: payload));
+
+        await db.SaveChangesAsync(ct);
+        return comment;
+    }
+
+    public async Task EditCommentAsync(int itemId, int commentId, string text, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            throw new ArgumentException("Comment text is required.", nameof(text));
+        }
+
+        var item = await db.Items.SingleOrDefaultAsync(i => i.Id == itemId, ct)
+            ?? throw new InvalidOperationException($"Item {itemId} not found.");
+        EnsureNotRemoved(item);
+
+        var comment = await db.Comments.SingleOrDefaultAsync(c => c.Id == commentId && c.ItemId == itemId, ct)
+            ?? throw new InvalidOperationException($"Comment {commentId} not found on item {itemId}.");
+
+        var user = await currentUser.GetCurrentUserAsync(ct);
+        var trimmedText = text.Trim();
+        comment.Text = trimmedText;
+        comment.UpdatedAt = DateTimeOffset.UtcNow;
+
+        var payload = JsonSerializer.Serialize(new CommentPayload(trimmedText), EventJson.Options);
+        db.Events.Add(NewEvent(item, user.Id, EventType.CommentEdited, payload: payload));
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task DeleteCommentAsync(int itemId, int commentId, CancellationToken ct = default)
+    {
+        var item = await db.Items.SingleOrDefaultAsync(i => i.Id == itemId, ct)
+            ?? throw new InvalidOperationException($"Item {itemId} not found.");
+        EnsureNotRemoved(item);
+
+        var comment = await db.Comments.SingleOrDefaultAsync(c => c.Id == commentId && c.ItemId == itemId, ct)
+            ?? throw new InvalidOperationException($"Comment {commentId} not found on item {itemId}.");
+
+        var user = await currentUser.GetCurrentUserAsync(ct);
+        var payload = JsonSerializer.Serialize(new CommentPayload(comment.Text), EventJson.Options);
+
+        db.Comments.Remove(comment);
+        db.Events.Add(NewEvent(item, user.Id, EventType.CommentDeleted, payload: payload));
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task SaveRecommendationNoteAsync(int itemId, string note, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(note))
+        {
+            throw new ArgumentException("Recommendation note text is required.", nameof(note));
+        }
+
+        var item = await db.Items.SingleOrDefaultAsync(i => i.Id == itemId, ct)
+            ?? throw new InvalidOperationException($"Item {itemId} not found.");
+        EnsureNotRemoved(item);
+
+        var user = await currentUser.GetCurrentUserAsync(ct);
+        var trimmedNote = note.Trim();
+        item.RecommendationNote = trimmedNote;
+
+        var payload = JsonSerializer.Serialize(new RecommendationNotePayload(trimmedNote), EventJson.Options);
+        db.Events.Add(NewEvent(item, user.Id, EventType.RecommendationNoteChanged, payload: payload));
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task RemoveRecommendationNoteAsync(int itemId, CancellationToken ct = default)
+    {
+        var item = await db.Items.SingleOrDefaultAsync(i => i.Id == itemId, ct)
+            ?? throw new InvalidOperationException($"Item {itemId} not found.");
+        EnsureNotRemoved(item);
+
+        if (item.RecommendationNote is null)
+        {
+            return;
+        }
+
+        var user = await currentUser.GetCurrentUserAsync(ct);
+        var payload = JsonSerializer.Serialize(new RecommendationNotePayload(item.RecommendationNote), EventJson.Options);
+        item.RecommendationNote = null;
+
+        db.Events.Add(NewEvent(item, user.Id, EventType.RecommendationNoteRemoved, payload: payload));
         await db.SaveChangesAsync(ct);
     }
 

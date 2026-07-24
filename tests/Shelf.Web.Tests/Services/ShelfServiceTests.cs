@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Shelf.Web.Data.Entities;
 using Shelf.Web.Services;
@@ -175,5 +176,124 @@ public class ShelfServiceTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.ChangeStatusAsync(item.Id, ItemStatus.Finished));
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.RemoveItemAsync(item.Id));
+    }
+
+    [Fact]
+    public async Task SaveReview_New_InsertsAndLogsReviewAddedSnapshot()
+    {
+        using var fixture = new SqliteDbFixture();
+        var user = await TestUsers.SeedAsync(fixture.Db);
+        var service = new ShelfService(fixture.Db, new StubCurrentUserService(user));
+
+        var item = await service.AddOrRestoreItemAsync(MediaType.Film, ExternalSource.Tmdb, "movie:1", "Film One", "", []);
+
+        await service.SaveReviewAsync(item.Id, 4, "Pretty good");
+
+        var review = await fixture.Db.Reviews.SingleAsync(r => r.ItemId == item.Id);
+        Assert.Equal(4, review.Rating);
+        Assert.Equal("Pretty good", review.Text);
+        Assert.Equal(review.CreatedAt, review.UpdatedAt);
+
+        var addedEvent = await fixture.Db.Events.SingleAsync(e => e.ItemId == item.Id && e.Type == EventType.ReviewAdded);
+        var payload = JsonSerializer.Deserialize<ReviewPayload>(addedEvent.Payload!, EventJson.Options);
+        Assert.Equal(4, payload!.Rating);
+        Assert.Equal("Pretty good", payload.Text);
+    }
+
+    [Fact]
+    public async Task SaveReview_Existing_UpdatesAndLogsReviewEditedSnapshot()
+    {
+        using var fixture = new SqliteDbFixture();
+        var user = await TestUsers.SeedAsync(fixture.Db);
+        var service = new ShelfService(fixture.Db, new StubCurrentUserService(user));
+
+        var item = await service.AddOrRestoreItemAsync(MediaType.Film, ExternalSource.Tmdb, "movie:1", "Film One", "", []);
+        await service.SaveReviewAsync(item.Id, 3, "Okay");
+
+        await service.SaveReviewAsync(item.Id, 5, "Actually great");
+
+        var review = await fixture.Db.Reviews.SingleAsync(r => r.ItemId == item.Id);
+        Assert.Equal(5, review.Rating);
+        Assert.Equal("Actually great", review.Text);
+        Assert.NotEqual(review.CreatedAt, review.UpdatedAt);
+
+        var editedEvent = await fixture.Db.Events.SingleAsync(e => e.ItemId == item.Id && e.Type == EventType.ReviewEdited);
+        var payload = JsonSerializer.Deserialize<ReviewPayload>(editedEvent.Payload!, EventJson.Options);
+        Assert.Equal(5, payload!.Rating);
+        Assert.Equal("Actually great", payload.Text);
+    }
+
+    [Fact]
+    public async Task DeleteReview_HardDeletes_AndLogsLastKnownSnapshot()
+    {
+        using var fixture = new SqliteDbFixture();
+        var user = await TestUsers.SeedAsync(fixture.Db);
+        var service = new ShelfService(fixture.Db, new StubCurrentUserService(user));
+
+        var item = await service.AddOrRestoreItemAsync(MediaType.Film, ExternalSource.Tmdb, "movie:1", "Film One", "", []);
+        await service.SaveReviewAsync(item.Id, 2, "Meh");
+
+        await service.DeleteReviewAsync(item.Id);
+
+        Assert.Empty(await fixture.Db.Reviews.Where(r => r.ItemId == item.Id).ToListAsync());
+
+        var deletedEvent = await fixture.Db.Events.SingleAsync(e => e.ItemId == item.Id && e.Type == EventType.ReviewDeleted);
+        var payload = JsonSerializer.Deserialize<ReviewPayload>(deletedEvent.Payload!, EventJson.Options);
+        Assert.Equal(2, payload!.Rating);
+        Assert.Equal("Meh", payload.Text);
+    }
+
+    [Fact]
+    public async Task SaveReview_AfterDelete_NewRowWithNewCreatedAt()
+    {
+        using var fixture = new SqliteDbFixture();
+        var user = await TestUsers.SeedAsync(fixture.Db);
+        var service = new ShelfService(fixture.Db, new StubCurrentUserService(user));
+
+        var item = await service.AddOrRestoreItemAsync(MediaType.Film, ExternalSource.Tmdb, "movie:1", "Film One", "", []);
+        await service.SaveReviewAsync(item.Id, 2, "First take");
+        var firstReview = await fixture.Db.Reviews.SingleAsync(r => r.ItemId == item.Id);
+        var firstCreatedAt = firstReview.CreatedAt;
+        var firstId = firstReview.Id;
+
+        await service.DeleteReviewAsync(item.Id);
+        await service.SaveReviewAsync(item.Id, 5, "Second take");
+
+        var secondReview = await fixture.Db.Reviews.SingleAsync(r => r.ItemId == item.Id);
+        Assert.NotEqual(firstId, secondReview.Id);
+        Assert.True(secondReview.CreatedAt >= firstCreatedAt);
+        Assert.Equal("Second take", secondReview.Text);
+    }
+
+    [Fact]
+    public async Task SaveReview_EmptyRatingAndText_Throws()
+    {
+        using var fixture = new SqliteDbFixture();
+        var user = await TestUsers.SeedAsync(fixture.Db);
+        var service = new ShelfService(fixture.Db, new StubCurrentUserService(user));
+
+        var item = await service.AddOrRestoreItemAsync(MediaType.Film, ExternalSource.Tmdb, "movie:1", "Film One", "", []);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.SaveReviewAsync(item.Id, null, null));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.SaveReviewAsync(item.Id, null, "   "));
+    }
+
+    [Fact]
+    public async Task DeleteComment_LogsLastKnownTextWithCommentId()
+    {
+        using var fixture = new SqliteDbFixture();
+        var user = await TestUsers.SeedAsync(fixture.Db);
+        var service = new ShelfService(fixture.Db, new StubCurrentUserService(user));
+
+        var item = await service.AddOrRestoreItemAsync(MediaType.Film, ExternalSource.Tmdb, "movie:1", "Film One", "", []);
+        var comment = await service.AddCommentAsync(item.Id, "Great scene");
+
+        await service.DeleteCommentAsync(item.Id, comment.Id);
+
+        Assert.Empty(await fixture.Db.Comments.Where(c => c.ItemId == item.Id).ToListAsync());
+
+        var deletedEvent = await fixture.Db.Events.SingleAsync(e => e.ItemId == item.Id && e.Type == EventType.CommentDeleted);
+        var payload = JsonSerializer.Deserialize<CommentPayload>(deletedEvent.Payload!, EventJson.Options);
+        Assert.Equal("Great scene", payload!.Text);
     }
 }
