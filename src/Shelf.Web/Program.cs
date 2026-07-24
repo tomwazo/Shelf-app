@@ -14,6 +14,7 @@ builder.Services.AddDbContext<ShelfDbContext>(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<ShelfService>();
+builder.Services.AddScoped<StatsService>();
 builder.Services.AddMemoryCache();
 
 builder.Services.AddHttpClient<TmdbSearchProvider>(client =>
