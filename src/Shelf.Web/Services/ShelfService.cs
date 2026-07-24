@@ -61,6 +61,48 @@ public class ShelfService(ShelfDbContext db, ICurrentUserService currentUser)
         return item;
     }
 
+    public async Task ChangeStatusAsync(int itemId, ItemStatus newStatus, CancellationToken ct = default)
+    {
+        var item = await db.Items.SingleOrDefaultAsync(i => i.Id == itemId, ct)
+            ?? throw new InvalidOperationException($"Item {itemId} not found.");
+        EnsureNotRemoved(item);
+
+        if (item.Status == newStatus)
+        {
+            return;
+        }
+
+        var user = await currentUser.GetCurrentUserAsync(ct);
+        var fromStatus = item.Status;
+        item.Status = newStatus;
+
+        db.Events.Add(NewEvent(item, user.Id, EventType.StatusChanged, fromStatus: fromStatus, toStatus: newStatus));
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task RemoveItemAsync(int itemId, CancellationToken ct = default)
+    {
+        var item = await db.Items.SingleOrDefaultAsync(i => i.Id == itemId, ct)
+            ?? throw new InvalidOperationException($"Item {itemId} not found.");
+        EnsureNotRemoved(item);
+
+        var user = await currentUser.GetCurrentUserAsync(ct);
+        item.RemovedAt = DateTimeOffset.UtcNow;
+
+        db.Events.Add(NewEvent(item, user.Id, EventType.ItemRemoved));
+        await db.SaveChangesAsync(ct);
+    }
+
+    // Removed items are read-only; the UI hides mutation forms for them,
+    // this guard is the backstop.
+    private static void EnsureNotRemoved(Item item)
+    {
+        if (item.RemovedAt is not null)
+        {
+            throw new InvalidOperationException($"Item {item.Id} has been removed from the Shelf and is read-only.");
+        }
+    }
+
     // Matches genres by trimmed name, case-insensitively, entirely in memory
     // rather than relying on the database's collation - SQLite (tests) and
     // SQL Server (prod) don't agree on default string collation, so this
@@ -99,11 +141,16 @@ public class ShelfService(ShelfDbContext db, ICurrentUserService currentUser)
         return genres;
     }
 
-    private static Event NewEvent(Item item, int userId, EventType type) => new()
+    private static Event NewEvent(
+        Item item, int userId, EventType type,
+        ItemStatus? fromStatus = null, ItemStatus? toStatus = null, string? payload = null) => new()
     {
         Item = item,
         UserId = userId,
         OccurredAt = DateTimeOffset.UtcNow,
         Type = type,
+        FromStatus = fromStatus,
+        ToStatus = toStatus,
+        Payload = payload,
     };
 }

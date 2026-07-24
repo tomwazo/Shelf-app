@@ -110,4 +110,70 @@ public class ShelfServiceTests
         var addedEvent = Assert.Single(events);
         Assert.Equal(EventType.ItemAdded, addedEvent.Type);
     }
+
+    [Fact]
+    public async Task ChangeStatus_LogsEventWithFromAndToColumns()
+    {
+        using var fixture = new SqliteDbFixture();
+        var user = await TestUsers.SeedAsync(fixture.Db);
+        var service = new ShelfService(fixture.Db, new StubCurrentUserService(user));
+
+        var item = await service.AddOrRestoreItemAsync(MediaType.Film, ExternalSource.Tmdb, "movie:1", "Film One", "", []);
+
+        await service.ChangeStatusAsync(item.Id, ItemStatus.Finished);
+
+        var updated = await fixture.Db.Items.SingleAsync(i => i.Id == item.Id);
+        Assert.Equal(ItemStatus.Finished, updated.Status);
+
+        var statusEvent = await fixture.Db.Events.SingleAsync(e => e.ItemId == item.Id && e.Type == EventType.StatusChanged);
+        Assert.Equal(ItemStatus.Backlog, statusEvent.FromStatus);
+        Assert.Equal(ItemStatus.Finished, statusEvent.ToStatus);
+    }
+
+    [Fact]
+    public async Task ChangeStatus_SameStatus_NoEvent()
+    {
+        using var fixture = new SqliteDbFixture();
+        var user = await TestUsers.SeedAsync(fixture.Db);
+        var service = new ShelfService(fixture.Db, new StubCurrentUserService(user));
+
+        var item = await service.AddOrRestoreItemAsync(MediaType.Film, ExternalSource.Tmdb, "movie:1", "Film One", "", []);
+
+        await service.ChangeStatusAsync(item.Id, ItemStatus.Backlog);
+
+        var events = await fixture.Db.Events.Where(e => e.ItemId == item.Id).ToListAsync();
+        Assert.Single(events); // only the original ItemAdded - no StatusChanged event
+    }
+
+    [Fact]
+    public async Task RemoveItem_SetsRemovedAt_AndLogsItemRemoved()
+    {
+        using var fixture = new SqliteDbFixture();
+        var user = await TestUsers.SeedAsync(fixture.Db);
+        var service = new ShelfService(fixture.Db, new StubCurrentUserService(user));
+
+        var item = await service.AddOrRestoreItemAsync(MediaType.Film, ExternalSource.Tmdb, "movie:1", "Film One", "", []);
+
+        await service.RemoveItemAsync(item.Id);
+
+        var updated = await fixture.Db.Items.SingleAsync(i => i.Id == item.Id);
+        Assert.NotNull(updated.RemovedAt);
+
+        var removedEvent = await fixture.Db.Events.SingleAsync(e => e.ItemId == item.Id && e.Type == EventType.ItemRemoved);
+        Assert.Equal(user.Id, removedEvent.UserId);
+    }
+
+    [Fact]
+    public async Task Mutation_OnRemovedItem_Throws()
+    {
+        using var fixture = new SqliteDbFixture();
+        var user = await TestUsers.SeedAsync(fixture.Db);
+        var service = new ShelfService(fixture.Db, new StubCurrentUserService(user));
+
+        var item = await service.AddOrRestoreItemAsync(MediaType.Film, ExternalSource.Tmdb, "movie:1", "Film One", "", []);
+        await service.RemoveItemAsync(item.Id);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.ChangeStatusAsync(item.Id, ItemStatus.Finished));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.RemoveItemAsync(item.Id));
+    }
 }

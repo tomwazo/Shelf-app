@@ -1,0 +1,46 @@
+@model (System.Collections.Generic.IReadOnlyList<Shelf.Web.Data.Entities.Event> Events, bool ShowCover)
+@using Shelf.Web.Services
+
+@if (Model.Events.Count == 0)
+{
+    <p>No items to display.</p>
+}
+else
+{
+    <ul class="list-unstyled">
+        @foreach (var e in Model.Events)
+        {
+            var display = EventDisplay.Describe(e);
+            <li class="d-flex gap-2 mb-3 pb-2 border-bottom">
+                @if (Model.ShowCover)
+                {
+                    if (!string.IsNullOrEmpty(e.Item.CoverArtUrl))
+                    {
+                        <img src="@e.Item.CoverArtUrl" alt="" style="width:40px;height:60px;object-fit:cover;flex-shrink:0;" />
+                    }
+                    else
+                    {
+                        <div class="cover-placeholder d-flex align-items-center justify-content-center flex-shrink-0" style="width:40px;height:60px;font-size:1rem;">
+                            <span>@e.Item.Title.Substring(0, 1).ToUpperInvariant()</span>
+                        </div>
+                    }
+                }
+                <div>
+                    <div>
+                        @display.Prefix<a asp-page="/Items/Details" asp-route-id="@e.ItemId"><strong>@e.Item.Title</strong></a>@display.Suffix
+                        — @e.User.Name
+                    </div>
+                    @if (display.Stars is int stars)
+                    {
+                        <div>@(new string('★', stars))@(new string('☆', Math.Max(0, 5 - stars)))</div>
+                    }
+                    @if (!string.IsNullOrEmpty(display.Detail))
+                    {
+                        <div class="text-muted">@display.Detail</div>
+                    }
+                    <div class="text-muted small">@e.OccurredAt.ToLocalTime().ToString("g")</div>
+                </div>
+            </li>
+        }
+    </ul>
+}
