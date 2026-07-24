@@ -22,10 +22,10 @@ jobs:
         dotnet-version: '10.x'
 
     - name: Build with dotnet
-      run: dotnet build --configuration Release
-    
+      run: dotnet build src/Shelf.Web/Shelf.Web.csproj --configuration Release
+
     - name: dotnet publish
-      run: dotnet publish -c Release -o ${{env.DOTNET_ROOT}}/myapp 
+      run: dotnet publish src/Shelf.Web/Shelf.Web.csproj -c Release -o ${{env.DOTNET_ROOT}}/myapp
 
     - name: Deploy to Azure Web App
       uses: azure/webapps-deploy@v2
