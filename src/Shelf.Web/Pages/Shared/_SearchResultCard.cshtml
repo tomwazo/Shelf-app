@@ -1,0 +1,55 @@
+@model (Shelf.Web.Pages.AddModel.AddResultRow Row, Shelf.Web.Data.Entities.MediaType MediaType)
+@{
+    var result = Model.Row.Result;
+}
+<div class="col">
+    <div class="card h-100 @(Model.Row.ExistingItemId is not null ? "opacity-50" : "")">
+        @if (!string.IsNullOrEmpty(result.CoverArtUrl))
+        {
+            <img src="@result.CoverArtUrl" class="card-img-top" alt="" />
+        }
+        else
+        {
+            <div class="cover-placeholder card-img-top d-flex align-items-center justify-content-center">
+                <span>@result.Title.Substring(0, 1).ToUpperInvariant()</span>
+            </div>
+        }
+        <div class="card-body d-flex flex-column">
+            <h5 class="card-title">@result.Title</h5>
+            @if (!string.IsNullOrEmpty(result.Year))
+            {
+                <p class="card-text text-muted mb-1">@result.Year</p>
+            }
+            @if (result.Genres.Count > 0)
+            {
+                <p class="card-text">
+                    @foreach (var genre in result.Genres)
+                    {
+                        <span class="badge text-bg-light border me-1">@genre</span>
+                    }
+                </p>
+            }
+            <div class="mt-auto">
+                @if (Model.Row.ExistingItemId is int existingId)
+                {
+                    <a asp-page="/Items/Details" asp-route-id="@existingId" class="btn btn-outline-secondary w-100">Already on your Shelf</a>
+                }
+                else
+                {
+                    <form method="post" asp-page-handler="Add">
+                        <input type="hidden" name="Input.MediaType" value="@Model.MediaType" />
+                        <input type="hidden" name="Input.Source" value="@result.Source" />
+                        <input type="hidden" name="Input.ExternalId" value="@result.ExternalId" />
+                        <input type="hidden" name="Input.Title" value="@result.Title" />
+                        <input type="hidden" name="Input.CoverArtUrl" value="@result.CoverArtUrl" />
+                        @foreach (var genre in result.Genres)
+                        {
+                            <input type="hidden" name="Input.Genres" value="@genre" />
+                        }
+                        <button type="submit" class="btn btn-primary w-100">Add</button>
+                    </form>
+                }
+            </div>
+        </div>
+    </div>
+</div>

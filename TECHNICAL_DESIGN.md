@@ -32,6 +32,20 @@ fixed, see git history on `develop`/`main`):
   `IX_Users_ExternalIdentity`'s unique constraint. Fixed by catching
   that specific failure and re-reading the row the other request
   committed.
+- A third bug surfaced 2026-07-24, after a >60 minute idle gap: the
+  free-tier database's auto-pause (see § Database) meant the first
+  request after idle had to wait for the DB to resume, and that resume
+  took longer than the SQL client's connection timeout — an unhandled
+  `SqlException` ("Connection Timeout Expired" during the post-login
+  phase, ~29s) reached `Shelf.Web.Pages.ShelfModel.OnGetAsync` and hit
+  the generic ASP.NET error page, since `AddDbContext` had no retry
+  policy configured. Fixed by adding
+  `sqlOptions.EnableRetryOnFailure()` to the `UseSqlServer` call in
+  `Program.cs` — EF Core's built-in mitigation for exactly this
+  transient-connection scenario. No explicit `BeginTransactionAsync`
+  calls exist in the codebase (writes rely on `SaveChangesAsync`'s
+  implicit transaction), so this doesn't conflict with the retrying
+  execution strategy's restriction on user-initiated transactions.
 
 Local dev, Azure provisioning, and first deploy were completed
 2026-07-22–23 (see § Local Development and § Provisioned
