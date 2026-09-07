@@ -16,8 +16,9 @@ remove/re-add), Timeline, and Stats. Full prod smoke test passed
 2026-07-24: sign-in, real user attribution, adding from all three
 providers, and the complete item-detail flow all verified working live.
 
-Two bugs were found only in production during this deploy (both
-fixed, see git history on `develop`/`main`):
+Three bugs were found only in production during this deploy (all
+fixed; the first two are in git history on `develop`/`main`, the
+third was a config change — see below):
 - The deploy workflow's `dotnet build`/`dotnet publish` had no
   `--project` argument; once Phase 0 added a second project
   (`Shelf.Web.Tests`) to `Shelf.slnx`, this published both projects'
@@ -32,29 +33,79 @@ fixed, see git history on `develop`/`main`):
   `IX_Users_ExternalIdentity`'s unique constraint. Fixed by catching
   that specific failure and re-reading the row the other request
   committed.
-- A third bug surfaced 2026-07-24, after a >60 minute idle gap: the
-  free-tier database's auto-pause (see § Database) meant the first
-  request after idle had to wait for the DB to resume, and that resume
-  took longer than the SQL client's connection timeout — an unhandled
-  `SqlException` ("Connection Timeout Expired" during the post-login
-  phase, ~29s) reached `Shelf.Web.Pages.ShelfModel.OnGetAsync` and hit
-  the generic ASP.NET error page, since `AddDbContext` had no retry
-  policy configured. Fixed by adding
-  `sqlOptions.EnableRetryOnFailure()` to the `UseSqlServer` call in
-  `Program.cs` — EF Core's built-in mitigation for exactly this
-  transient-connection scenario. No explicit `BeginTransactionAsync`
-  calls exist in the codebase (writes rely on `SaveChangesAsync`'s
-  implicit transaction), so this doesn't conflict with the retrying
-  execution strategy's restriction on user-initiated transactions.
+- **Unhandled `SqlException` on database auto-resume** (issue #8,
+  surfaced 2026-07-24, finally fixed and verified 2026-07-25). The
+  first request after the free-tier database had auto-paused (see
+  § Database) hit the generic ASP.NET error page instead of loading:
+  an unhandled `SqlException` ("Connection Timeout Expired" during
+  the post-login phase, ~29s, `Error Number: -2`) reached the page
+  handler, since `AddDbContext` had no retry policy configured.
+  This took three attempts to resolve, and the false starts are worth
+  recording:
+  - **Attempt 1 (2026-07-24, ineffective — never shipped).** Added
+    `sqlOptions.EnableRetryOnFailure()` to the `UseSqlServer` call in
+    `Program.cs` (`8ecf87b`). Issue #8 was closed on the strength of
+    the commit alone. The commit sat unpushed on local `develop`,
+    alongside `65812ce` (the "search all media types" feature,
+    issue #6), so it never reached `main`/prod at all.
+  - **Attempt 2 (2026-07-25, shipped but still ineffective).** Both
+    commits pushed and merged to `main` via PR #13 (deploy run
+    `30154598792`, 10:30 UTC). The bug reproduced anyway, twice, at
+    12:49 and 13:18 UTC. Issue #8 was auto-closed a second time by
+    the merge, again without verification.
+  - **Why `EnableRetryOnFailure()` could never work here.** The
+    exception reaching `ExceptionHandlerMiddleware` was a bare
+    `SqlException`, not a `RetryLimitExceededException` — proof the
+    retry strategy never engaged. Azure's docs state that connecting
+    to a paused serverless database fails fast with **error 40613**,
+    which *is* in EF Core's transient list; had the platform behaved
+    that way the retry fix would have worked as intended. In practice
+    the connection instead completes pre-login and login in under a
+    second, then **hangs in the post-login phase** until the client
+    timeout expires, surfacing as **error `-2`**, which EF Core
+    deliberately does *not* treat as transient (a timeout can mean the
+    operation actually succeeded server-side, so blind retry is
+    unsafe). The fix was written against the documented failure mode;
+    the platform produces a different one.
+  - **Actual root cause.** The App Service connection string had
+    `Connection Timeout=30`, while every measured auto-resume took
+    **~60 seconds** (Azure activity log: 12:49:19→12:50:19 and
+    13:18:18→13:19:18). The client was abandoning the attempt at
+    ~29s, less than half way through a resume that has never been
+    observed finishing in under a minute — so the first request after
+    any pause was *guaranteed* to fail, not merely likely.
+  - **Fix (2026-07-25):** raised `Connection Timeout` from 30 to
+    **90 seconds** in the App Service `ShelfDb` connection string.
+    Config-only; no code change. The connection now waits out the
+    resume, so the cost is a slow first page load rather than an
+    error. Verified in prod against a genuine cold start: database
+    confirmed `Paused`, app restarted, Timeline page loaded in a
+    browser, `resumedDate` 16:43:58 UTC, page rendered normally.
+  - `EnableRetryOnFailure()` remains in `Program.cs`. It is harmless
+    and no longer load-bearing. Optional further hardening — adding
+    `errorNumbersToAdd: new[] { -2 }` — was deliberately **not**
+    applied: the timeout change is verified sufficient, and making
+    `-2` retryable risks re-applying a write that had already
+    committed (e.g. a duplicate `Event` row). Revisit only if this
+    recurs.
+  - **Process lesson.** Issue #8 was closed twice before the fix was
+    ever verified in production — once on an unpushed commit, once by
+    an auto-close on merge. A bug is not fixed until it has been
+    observed not happening in prod.
 
 Local dev, Azure provisioning, and first deploy were completed
 2026-07-22–23 (see § Local Development and § Provisioned
 Infrastructure → Deployment for that history).
 
 ### Actions for next session
-None currently — v1 is complete. Next likely work is a UI redesign
-from wireframes (visual-layer only; `ShelfService`/`StatsService`/
-search providers wouldn't need to change) — no wireframes provided yet.
+- No outstanding bug work. `main` and `origin/develop` are in sync
+  and everything known is deployed; issues #8 and #14 are closed and
+  verified.
+- Next likely work is a UI redesign from wireframes (visual-layer
+  only; `ShelfService`/`StatsService`/search providers wouldn't need
+  to change) — no wireframes provided yet.
+- Known open issue #12 ("Display release date for unreleased games"),
+  unrelated to any of the above.
 
 ## Provisioned Infrastructure
 
@@ -69,13 +120,40 @@ All in resource group `shelf-rg`, subscription "Azure subscription 1"
   the home IP changes).
 - **Database:** `Shelf` — serverless free tier (`useFreeLimit: true`),
   10 GB / 100k vCore-seconds per month, **pauses** (not bills) on
-  exhaustion; auto-pauses after 60 idle minutes, so the first request
-  after idle is slow. Schema: `InitialCreate` applied 2026-07-22.
+  exhaustion (`freeLimitExhaustionBehavior: AutoPause`). Schema:
+  `InitialCreate` applied 2026-07-22.
+  - **Auto-pause behaviour (measured 2026-07-25, not as configured).**
+    ARM reports `autoPauseDelay: 60`, but the database consistently
+    pauses after **~25 idle minutes** (24.5 min across three measured
+    cycles). The delay cannot be changed — Azure rejects any attempt
+    with `ProvisioningDisabled: Only default value for auto pause
+    delay is allowed for Free Limit database with auto pause
+    exhaustion behavior`. The gap between the reported and enforced
+    value looks like an Azure bug; it isn't actionable.
+  - **Resume takes ~60 seconds**, every time (activity log:
+    12:49:19→12:50:19, 13:18:18→13:19:18). This is why the client
+    connect timeout is 90s — see § Web app and issue #8.
+  - **The aggressive pause is load-bearing for staying free.** While
+    online the database bills ~41 vCore-sec/min (min-capacity billing
+    at 0.5 vCores), so the 100k monthly allowance buys roughly **40
+    hours online per month**. At ~25 min per session that is ~99
+    sessions/month; at a true 60-minute delay it would be ~40. Don't
+    try to lengthen it even if Azure ever permits it. July 2026 usage
+    was 16,541 of 100,000.
 - **App Service plan:** `shelf-plan`, F1 (free), Linux, **UK West**
   (UK South had no free-tier VM quota).
 - **Web app:** `shelf-app-ccbp` →
   https://shelf-app-ccbp.azurewebsites.net, runtime DOTNETCORE:10.0.
   Connection string `ShelfDb` (type SQLAzure) set in app config.
+  - ⚠️ **`Connection Timeout=90` in that connection string is
+    load-bearing — do not lower it.** It exists so the first request
+    after the database auto-pauses can wait out the ~60s serverless
+    resume instead of erroring (issue #8). The default of 30 is not
+    enough and produces an unhandled `SqlException` on the error page.
+  - This setting lives **only in App Service configuration** — there
+    is no commit in the repo that records it, so `git log` won't
+    reveal it. If the web app is ever recreated or its configuration
+    reset, this must be reapplied or the bug returns.
 - **Deployment:** GitHub Actions workflow
   `.github/workflows/main_shelf-app-ccbp.yml` on `main`, publish-
   profile secret in repo. Deploys on push to `main`. First deploy
